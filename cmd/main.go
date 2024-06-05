@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 
@@ -16,23 +17,30 @@ func parseYAML(filePath string) (int, error) {
 	defer file.Close()
 
 	var lineCount int
-	scanner := bufio.NewScanner(file)
+	reader := bufio.NewReader(file)
 	var data []byte
 
-	for scanner.Scan() {
+	for {
+		line, err := reader.ReadBytes('\n')
+		if err != nil {
+			if err.Error() == "EOF" {
+				break
+			}
+			return 0, fmt.Errorf("ошибка чтения файла: %v", err)
+		}
 		lineCount++
-		data = append(data, scanner.Bytes()...)
-		data = append(data, '\n')
-	}
-
-	if err := scanner.Err(); err != nil {
-		return 0, fmt.Errorf("ошибка чтения файла: %v", err)
+		data = append(data, line...)
 	}
 
 	var parsedData map[string]interface{}
-	decoder := yaml.NewDecoder(bufio.NewReader(file))
-	if err := decoder.Decode(&parsedData); err != nil {
-		return lineCount, fmt.Errorf("ошибка парсинга YAML на строке %d: %v", lineCount, err)
+	err = yaml.Unmarshal(data, &parsedData)
+	if err != nil {
+		// Попробуем найти строку, на которой произошла ошибка
+		var yamlErr *yaml.TypeError
+		if ok := errors.As(err, &yamlErr); ok {
+			return lineCount, fmt.Errorf("ошибка парсинга YAML: %v", yamlErr.Errors)
+		}
+		return lineCount, fmt.Errorf("ошибка парсинга YAML: %v", err)
 	}
 
 	return lineCount, nil
